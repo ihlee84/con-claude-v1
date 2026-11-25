@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>실습실 환경개선 예산 산출</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* 배치: 좌측 입력 4단계, 우측 고정 산출 패널. 모바일에서는 세로로 쌓음. */
+:root{
+  --bg:#eef1f5;
+  --surface:#ffffff;
+  --ink:#16202e;
+  --muted:#5b6778;
+  --line:#d5dbe4;
+  --accent:#1f4e8c;
+  --accent-soft:#e3ecf8;
+  --warn-bg:#fff4d6;
+  --warn-ink:#6b4a00;
+  --err:#b42318;
+  --font:"IBM Plex Sans KR","Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f151e; --surface:#18212d; --ink:#e7ecf3; --muted:#9aa7b8; --line:#2c3848;
+    --accent:#7fb0f0; --accent-soft:#1d2e45; --warn-bg:#3a2f12; --warn-ink:#f1d98a; --err:#ff8a80;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f151e; --surface:#18212d; --ink:#e7ecf3; --muted:#9aa7b8; --line:#2c3848;
+  --accent:#7fb0f0; --accent-soft:#1d2e45; --warn-bg:#3a2f12; --warn-ink:#f1d98a; --err:#ff8a80;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.55;font-variant-numeric:tabular-nums}
+.wrap{max-width:1080px;margin:0 auto;padding:24px 16px 48px}
+header{margin-bottom:20px}
+header .org{font-size:13px;color:var(--muted);margin:0 0 2px}
+h1{font-size:24px;line-height:1.3;margin:0;font-weight:700;text-wrap:balance}
+.layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:860px){.layout{grid-template-columns:minmax(0,1fr)}}
+.steps{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px}
+.card h2{font-size:15px;margin:0 0 12px;font-weight:600;display:flex;align-items:center;gap:8px}
+.num{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:4px;background:var(--accent);color:var(--surface);font-size:12px;font-weight:700}
+.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:480px){.row{grid-template-columns:minmax(0,1fr)}}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:500}
+select,input[type=number]{font:inherit;font-size:15px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:9px 10px;width:100%;min-width:0}
+select:focus-visible,input:focus-visible,.opt input:focus-visible + .optbox,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+select:disabled{opacity:.55}
+.area{margin-top:12px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:10px 12px;background:var(--accent-soft);border-radius:6px}
+.area b{font-size:22px;font-weight:700;color:var(--accent)}
+.area span{color:var(--muted);font-size:13px}
+.hint{font-size:12.5px;color:var(--muted);min-height:18px}
+.err{font-size:12.5px;color:var(--err);min-height:18px}
+.opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;border:0;padding:0;margin:0}
+.opts.three{grid-template-columns:minmax(0,1fr)}
+@media (max-width:480px){.opts{grid-template-columns:minmax(0,1fr)}}
+.opt{position:relative;display:block}
+.opt input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+.optbox{display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:var(--surface);transition:border-color .12s, background .12s}
+.optbox strong{font-size:14.5px;font-weight:600}
+.optbox small{font-size:12.5px;color:var(--muted)}
+.opt input:checked + .optbox{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.opt:hover .optbox{border-color:var(--accent)}
+.sugg{margin:8px 0 0}
+aside{position:sticky;top:16px}
+@media (max-width:860px){aside{position:static}}
+.result h2{margin-bottom:4px}
+.sub{font-size:13px;color:var(--muted);margin:0 0 12px}
+.empty{border:1px dashed var(--line);border-radius:6px;padding:14px;color:var(--muted);font-size:14px}
+.empty ul{margin:6px 0 0;padding-left:18px}
+.empty li.ok{color:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:8px 0;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+td.amt,th.amt{text-align:right;white-space:nowrap}
+td .basis{display:block;font-size:12px;color:var(--muted)}
+tr.sum td{border-bottom:0;padding-top:12px}
+.total{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-top:6px;padding:12px;background:var(--accent);color:var(--surface);border-radius:6px}
+.total .lab{font-size:13px;opacity:.9}
+.total .val{font-size:26px;font-weight:700;text-align:right}
+.total .man{display:block;font-size:12.5px;font-weight:500;opacity:.9;text-align:right}
+.btnrow{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+button{font:inherit;font-size:14px;font-weight:600;border:1px solid var(--accent);background:var(--surface);color:var(--accent);border-radius:6px;padding:8px 14px;cursor:pointer}
+button:hover{background:var(--accent-soft)}
+.copied{font-size:13px;color:var(--muted)}
+.note{margin-top:12px;padding:10px 12px;background:var(--warn-bg);color:var(--warn-ink);border-radius:6px;font-size:12.5px}
+.meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{font-size:12.5px;padding:3px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-weight:500}
+.opts.row3{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:480px){.opts.row3{grid-template-columns:minmax(0,1fr)}}
+.tablewrap{overflow-x:auto}
+.tablewrap th{white-space:nowrap}
+.listcard td .basis{white-space:nowrap}
+button.sm{padding:3px 9px;font-size:12.5px;font-weight:500}
+button.danger{border-color:var(--err);color:var(--err)}
+details.settings{margin-top:14px}
+details.settings summary{cursor:pointer;font-weight:600;font-size:15px}
+details.settings summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+details.settings[open] summary{margin-bottom:8px}
+.tablewrap input[type=number]{width:108px;padding:6px 8px;text-align:right}
+.listcard{margin-top:20px}
+.grand{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px 16px;margin-top:12px;padding:12px;background:var(--accent);color:var(--surface);border-radius:6px}
+.grand .val{font-size:24px;font-weight:700}
+.grand .lab{font-size:13px;opacity:.9}
+
+.perm{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;margin-top:12px}
+.perm div{padding:8px 10px;border:1px solid var(--line);border-radius:6px;min-width:0}
+.perm .k{display:block;font-size:12px;color:var(--muted)}
+.perm b{font-size:15px;font-weight:600}
+.costcard{margin-top:20px}
+table.cs{font-size:13.5px;min-width:560px}
+table.cs td.g{font-weight:600;white-space:nowrap;width:1%;padding-right:12px}
+table.cs tr.sub td{background:var(--accent-soft);font-weight:600}
+table.cs tr.big td{background:var(--accent);color:var(--surface);font-weight:700;border-bottom:0}
+table.cs tr.big td .basis{color:inherit;opacity:.85}
+table.cs th.amt, table.cs td.amt{padding-left:10px}
+.fn{margin-top:10px;font-size:12.5px;color:var(--muted)}
+table.r2{min-width:720px;font-size:13.5px}
+table.r2 td:nth-child(4){min-width:260px}
+table.r2 td .basis{white-space:normal}
+.st{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.st-ok{background:var(--accent-soft);color:var(--accent)}
+.st-est{background:var(--warn-bg);color:var(--warn-ink)}
+.st-na{background:var(--err);color:var(--surface)}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="org">동양미래대학교</p>
+    <h1>실습실 환경개선 공사 예산 산출</h1>
+  </header>
+
+  <div class="layout">
+    <div class="steps">
+
+      <section class="card" aria-labelledby="h1s">
+        <h2 id="h1s"><span class="num">1</span>건물·호실 선택</h2>
+        <div class="row">
+          <label class="f" for="bld">건물
+            <select id="bld"></select>
+          </label>
+          <label class="f" for="room">호실
+            <select id="room"></select>
+          </label>
+        </div>
+        <div class="area" aria-live="polite">
+          <b id="areaM2">–</b><span>㎡</span>
+          <span id="areaPy"></span>
+        </div>
+        <div class="hint" id="roomHint"></div>
+      </section>
+
+      <section class="card" aria-labelledby="h2s">
+        <h2 id="h2s"><span class="num">2</span>수용인원·층고 입력</h2>
+        <div class="row">
+          <label class="f" for="cap">수용인원 (명)
+            <input id="cap" type="number" inputmode="numeric" min="1" max="500" step="1" placeholder="예: 40">
+          </label>
+          <label class="f" for="hgt">층고 (m)
+            <input id="hgt" type="number" inputmode="decimal" min="2" max="12" step="0.1" placeholder="예: 3.0">
+          </label>
+        </div>
+        <div class="row">
+          <div><div class="hint" id="capHint"></div><div class="err" id="capErr" role="alert"></div></div>
+          <div><div class="hint">층고는 바닥 마감면에서 천장 마감면까지의 높이입니다.</div><div class="err" id="hgtErr" role="alert"></div></div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="h3s">
+        <h2 id="h3s"><span class="num">3</span>실습실 유형</h2>
+        <fieldset class="opts" id="typeOpts" style="margin:0;padding:0;border:0">
+          <legend style="position:absolute;left:-9999px">실습실 유형</legend>
+        </fieldset>
+        <div class="hint sugg" id="typeHint"></div>
+      </section>
+
+      <section class="card" aria-labelledby="h4s">
+        <h2 id="h4s"><span class="num">4</span>주요 공사 내용</h2>
+        <fieldset class="opts three" id="scopeOpts" style="margin:0;padding:0;border:0">
+          <legend style="position:absolute;left:-9999px">주요 공사 내용</legend>
+        </fieldset>
+      </section>
+
+      <section class="card" aria-labelledby="h5s">
+        <h2 id="h5s"><span class="num">5</span>환경개선 수준</h2>
+        <fieldset class="opts row3" id="levelOpts" style="margin:0;padding:0;border:0">
+          <legend style="position:absolute;left:-9999px">환경개선 수준</legend>
+        </fieldset>
+      </section>
+    </div>
+
+    <aside>
+      <section class="card result" aria-labelledby="hr" aria-live="polite">
+        <h2 id="hr">산출 결과</h2>
+        <p class="sub" id="resSub">입력이 끝나면 예산이 계산됩니다.</p>
+        <div id="resBody"></div>
+      </section>
+    </aside>
+  </div>
+
+  <section class="card costcard" aria-labelledby="hc">
+    <h2 id="hc">원가계산서</h2>
+    <p class="sub" id="costSub">호실과 조건을 모두 입력하면 표시됩니다.</p>
+    <div class="tablewrap" id="costBody"></div>
+  </section>
+
+  <section class="card listcard" aria-labelledby="hl">
+    <h2 id="hl">예산 목록</h2>
+    <p class="sub">여러 호실을 담아 건물별 소계와 전체 합계를 확인합니다. 이 브라우저에 저장됩니다.</p>
+    <div id="listBody"></div>
+  </section>
+
+  <details class="card settings">
+    <summary>단가 설정 (임시 단가)</summary>
+    <p class="sub">여기서 바꾼 단가는 산출 결과와 예산 목록에 바로 반영되며 이 브라우저에 저장됩니다.</p>
+    <div class="tablewrap" id="rateBody"></div>
+    <div class="btnrow"><button type="button" id="rateReset">기본값으로 되돌리기</button></div>
+  </details>
+
+  <details class="card settings">
+    <summary>원가계산 제비율 (조달청 2026.4.13. 건축공사 기준)</summary>
+    <p class="sub">원가계산서에 쓰는 요율입니다. 상태가 '추정' 또는 '미확인'인 값은 조달청 제비율표 원문으로 확인한 뒤 바꿔 주세요. 바꾼 값은 이 브라우저에 저장됩니다.</p>
+    <div class="tablewrap" id="rate2Body"></div>
+    <div class="btnrow"><button type="button" id="rate2Reset">기본값으로 되돌리기</button></div>
+  </details>
+</div>
+
+<script>
+/* ============ 호실현황 DB (엑셀 '총괄표' 184건) ============ */
+/* b 건물, r 호실, n 호실명, a 면적(㎡), u DB상 용도, c DB상 수용인원 */
+const ROOMS = [{"b":"1호관","r":"101","n":"다목적강의실","a":137.5,"u":"일반강의실","c":100},{"b":"1호관","r":"207","n":"HiVE사업단 평생직업교육실","a":141.3,"u":"일반강의실","c":104},{"b":"1호관","r":"208","n":"강의실","a":141.3,"u":"일반강의실","c":112},{"b":"1호관","r":"209","n":"강의실","a":86.6,"u":"일반강의실","c":74},{"b":"1호관","r":"210","n":"강의실","a":86.6,"u":"일반강의실","c":72},{"b":"1호관","r":"307","n":"전산실습실","a":127.9,"u":"전산실습실","c":56},{"b":"1호관","r":"308","n":"전산실습실","a":126.5,"u":"전산실습실","c":56},{"b":"1호관","r":"309","n":"전산실습실","a":87.0,"u":"전산실습실","c":69},{"b":"1호관","r":"310","n":"전산실습실","a":87.0,"u":"전산실습실","c":72},{"b":"2호관","r":"101","n":"전산실습실","a":84.46,"u":"전산실습실","c":39},{"b":"2호관","r":"102","n":"전산실습실","a":79.26,"u":"전산실습실","c":36},{"b":"2호관","r":"104","n":"칵테일실습실","a":124.6,"u":"실험실습실","c":40},{"b":"2호관","r":"201","n":"전산실습실","a":79.56,"u":"전산실습실","c":39},{"b":"2호관","r":"202","n":"전산실습실","a":81.37,"u":"전산실습실","c":39},{"b":"2호관","r":"203","n":"강의실","a":61.08,"u":"일반강의실","c":60},{"b":"2호관","r":"204","n":"강의실","a":65.24,"u":"일반강의실","c":60},{"b":"2호관","r":"205","n":"강의실","a":55.96,"u":"일반강의실","c":50},{"b":"2호관","r":"304","n":"스마트강의실","a":84.22,"u":"일반강의실","c":45},{"b":"2호관","r":"305","n":"스마트강의실","a":81.4,"u":"일반강의실","c":45},{"b":"2호관","r":"B101","n":"강의실","a":84.59,"u":"일반강의실","c":68},{"b":"2호관","r":"B102","n":"강의실","a":106.53,"u":"일반강의실","c":91},{"b":"2호관","r":"B103","n":"강의실","a":60.84,"u":"일반강의실","c":60},{"b":"2호관","r":"B104","n":"강의실","a":63.62,"u":"일반강의실","c":60},{"b":"2호관","r":"B105","n":"강의실","a":58.3,"u":"일반강의실","c":50},{"b":"2호관","r":"B201","n":"강의실","a":121.49,"u":"일반강의실","c":100},{"b":"2호관","r":"B202","n":"강의실","a":164.77,"u":"일반강의실","c":100},{"b":"3호관","r":"102","n":"전산실습실","a":87.2,"u":"전산실습실","c":40},{"b":"3호관","r":"104","n":"첨단강의실","a":102.66,"u":"일반강의실","c":52},{"b":"3호관","r":"105","n":"첨단강의실","a":102.66,"u":"일반강의실","c":52},{"b":"3호관","r":"109-1","n":"전산실습실","a":86.35,"u":"전산실습실","c":40},{"b":"3호관","r":"109-2","n":"전산실습실","a":85.19,"u":"전산실습실","c":40},{"b":"3호관","r":"109-3","n":"부트캠프 클린룸","a":152.95,"u":"실험실습실","c":null},{"b":"3호관","r":"113","n":"첨단강의실","a":131.85,"u":"일반강의실","c":52},{"b":"3호관","r":"210","n":"전산실습실","a":101.39,"u":"전산실습실","c":44},{"b":"3호관","r":"211","n":"전산실습실","a":100.9,"u":"전산실습실","c":40},{"b":"3호관","r":"212","n":"전산실습실","a":101.57,"u":"전산실습실","c":36},{"b":"3호관","r":"213","n":"전산실습실","a":89.74,"u":"전산실습실","c":36},{"b":"3호관","r":"214","n":"전산실습실","a":91.93,"u":"전산실습실","c":46},{"b":"3호관","r":"215","n":"전산실습실","a":91.98,"u":"전산실습실","c":46},{"b":"3호관","r":"216","n":"전산실습실","a":86.46,"u":"전산실습실","c":42},{"b":"3호관","r":"217","n":"전산실습실","a":83.26,"u":"전산실습실","c":46},{"b":"3호관","r":"218","n":"전산실습실","a":83.49,"u":"전산실습실","c":45},{"b":"3호관","r":"219","n":"전산실습실","a":86.67,"u":"전산실습실","c":40},{"b":"3호관","r":"301","n":"전산응용실습실(1)","a":110.16,"u":"전산실습실","c":49},{"b":"3호관","r":"302","n":"전산응용실습실(2)","a":100.63,"u":"전산실습실","c":49},{"b":"3호관","r":"306","n":"전산응용실습실(3)","a":83.65,"u":"전산실습실","c":40},{"b":"3호관","r":"307","n":"전산응용실습실(4)","a":84.83,"u":"전산실습실","c":40},{"b":"3호관","r":"308","n":"전산응용실습실(5)","a":99.95,"u":"전산실습실","c":50},{"b":"3호관","r":"310","n":"전산응용실습실(6)","a":106.72,"u":"전산실습실","c":50},{"b":"3호관","r":"311","n":"전산응용실습실(7)","a":107.82,"u":"전산실습실","c":50},{"b":"3호관","r":"313","n":"전산실습실","a":83.79,"u":"전산실습실","c":40},{"b":"3호관","r":"314","n":"전산실습실","a":81.99,"u":"전산실습실","c":41},{"b":"3호관","r":"315","n":"전산실습실","a":82.76,"u":"전산실습실","c":44},{"b":"3호관","r":"316","n":"사회맞춤형 공용 전산실","a":85.07,"u":"전산실습실","c":38},{"b":"3호관","r":"402","n":"PLC제어실험실","a":82.71,"u":"실험실습실","c":48},{"b":"3호관","r":"412","n":"전자응용실험실","a":83.29,"u":"실험실습실","c":48},{"b":"3호관","r":"413","n":"주문식교육실습실(통합)","a":116.15,"u":"실험실습실","c":48},{"b":"3호관","r":"414","n":"기초전자실험실","a":117.18,"u":"실험실습실","c":48},{"b":"3호관","r":"415","n":"공용실습실","a":44.35,"u":"실험실습실","c":0},{"b":"3호관","r":"416","n":"기기제어실험실","a":127.56,"u":"실험실습실","c":48},{"b":"3호관","r":"418","n":"컴퓨터응용실험실","a":107.07,"u":"전산실습실","c":48},{"b":"3호관","r":"420","n":"회로제작실험실","a":106.59,"u":"실험실습실","c":48},{"b":"3호관","r":"502","n":"전자통신기초실험실","a":83.63,"u":"실험실습실","c":46},{"b":"3호관","r":"503","n":"프로젝트용실험실","a":100.94,"u":"전산실습실","c":48},{"b":"3호관","r":"504","n":"디지털전자회로실험실","a":100.94,"u":"실험실습실","c":48},{"b":"3호관","r":"505","n":"네트워크실험실","a":133.27,"u":"실험실습실","c":52},{"b":"3호관","r":"507","n":"전자기기실험실","a":113.3,"u":"실험실습실","c":50},{"b":"3호관","r":"509","n":"강의실","a":86.5,"u":"일반강의실","c":57},{"b":"3호관","r":"510","n":"실감형 콘텐츠 실험실","a":86.5,"u":"실험실습실","c":57},{"b":"3호관","r":"513","n":"강의실","a":104.06,"u":"일반강의실","c":81},{"b":"3호관","r":"514","n":"강의실","a":102.93,"u":"일반강의실","c":87},{"b":"3호관","r":"515","n":"강의실","a":102.93,"u":"일반강의실","c":90},{"b":"4호관","r":"102","n":"로봇자동화교육센터","a":121.29,"u":"실험실습실","c":24},{"b":"4호관","r":"103","n":"정밀측정실","a":132.92,"u":"실험실습실","c":40},{"b":"4호관","r":"105","n":"열공학실험실","a":97.31,"u":"실험실습실","c":22},{"b":"4호관","r":"106","n":"유체실험실","a":92.92,"u":"실험실습실","c":45},{"b":"4호관","r":"107","n":"재료실험실","a":120.85,"u":"실험실습실","c":30},{"b":"4호관","r":"109","n":"전산응용설계실","a":90.65,"u":"실험실습실","c":38},{"b":"4호관","r":"201","n":"유공압실험실","a":123.59,"u":"실험실습실","c":50},{"b":"4호관","r":"210","n":"기기분석실험실","a":89.46,"u":"실험실습실","c":40},{"b":"4호관","r":"213","n":"단위조작실험실","a":91.26,"u":"실험실습실","c":40},{"b":"4호관","r":"214","n":"일반화학실험실","a":124.03,"u":"실험실습실","c":30},{"b":"4호관","r":"304","n":"고분자실험실","a":92.27,"u":"실험실습실","c":50},{"b":"4호관","r":"308","n":"전산실습실","a":83.76,"u":"전산실습실","c":45},{"b":"4호관","r":"309","n":"생명화학실험실(크린룸)","a":104.31,"u":"실험실습실","c":45},{"b":"4호관","r":"310","n":"크린룸 세포배양실","a":34.78,"u":"실험실습실","c":24},{"b":"4호관","r":"313","n":"생명화학실험실","a":147.22,"u":"실험실습실","c":34},{"b":"4호관","r":"314","n":"생명기기분석실","a":26.92,"u":"실험실습실","c":0},{"b":"4호관","r":"402","n":"컴퓨터응용실습실(통합)","a":122.45,"u":"전산실습실","c":48},{"b":"4호관","r":"404","n":"컴퓨터응용실험실","a":105.13,"u":"전산실습실","c":47},{"b":"4호관","r":"405","n":"기계설계과 전산실","a":105.13,"u":"전산실습실","c":46},{"b":"4호관","r":"407","n":"기계과 전산실습실","a":110.67,"u":"전산실습실","c":48},{"b":"4호관","r":"409","n":"메카트로닉스실습실","a":104.09,"u":"전산실습실","c":44},{"b":"4호관","r":"410","n":"컴퓨터실습실(2)","a":110.4,"u":"전산실습실","c":0},{"b":"4호관","r":"502","n":"자동제어실험실","a":124.6,"u":"실험실습실","c":40},{"b":"4호관","r":"503","n":"기계설계과 전산실습실","a":104.83,"u":"전산실습실","c":48},{"b":"4호관","r":"504","n":"기계과 종합설계실","a":105.13,"u":"전산실습실","c":50},{"b":"4호관","r":"509","n":"창의적공학실험실","a":104.8,"u":"실험실습실","c":50},{"b":"4호관","r":"512","n":"기초전기전자실습실","a":122.35,"u":"실험실습실","c":48},{"b":"4호관","r":"B-101","n":"창의적공학실습실","a":364.02,"u":"실험실습실","c":50},{"b":"4호관","r":"B-104","n":"공작실","a":519.29,"u":"실험실습실","c":50},{"b":"5호관","r":"102","n":"바이오기기분석실험실","a":109.64,"u":"실험실습실","c":0},{"b":"5호관","r":"102-1","n":"공동기기실","a":27.11,"u":"실험실습실","c":0},{"b":"5호관","r":"201","n":"바이오미생물실험실","a":219.83,"u":"실험실습실","c":48},{"b":"5호관","r":"203","n":"단백질분석실험실","a":151.83,"u":"실험실습실","c":48},{"b":"5호관","r":"B101","n":"스마트융합제작 실습실","a":153.11,"u":"실험실습실","c":0},{"b":"5호관","r":"B102","n":"스마트융합 마감 공정 실습실","a":86.09,"u":"실험실습실","c":0},{"b":"6호관","r":"101","n":"실내건축 큐레이션 실습실","a":85.77,"u":"실험실습실","c":64},{"b":"6호관","r":"103","n":"MM참여형 강의실","a":65.03,"u":"일반강의실","c":45},{"b":"6호관","r":"104","n":"클라우드 컴퓨팅 실습실","a":65.03,"u":"일반강의실","c":45},{"b":"6호관","r":"105","n":"강의실","a":75.74,"u":"일반강의실","c":56},{"b":"6호관","r":"107","n":"강의실","a":66.07,"u":"일반강의실","c":45},{"b":"6호관","r":"108","n":"강의실","a":65.62,"u":"일반강의실","c":45},{"b":"6호관","r":"112","n":"AI PC 실습실","a":86.5,"u":"전산실습실","c":40},{"b":"6호관","r":"201","n":"강의실","a":85.77,"u":"일반강의실","c":64},{"b":"6호관","r":"203","n":"강의실","a":65.06,"u":"일반강의실","c":45},{"b":"6호관","r":"204","n":"강의실","a":65.06,"u":"일반강의실","c":48},{"b":"6호관","r":"205","n":"강의실","a":65.06,"u":"일반강의실","c":45},{"b":"6호관","r":"208","n":"강의실","a":87.9,"u":"일반강의실","c":69},{"b":"6호관","r":"213","n":"원격강의 공용실습실","a":93.54,"u":"실험실습실","c":0},{"b":"6호관","r":"214","n":"체력측정실","a":20.79,"u":"일반강의실","c":0},{"b":"6호관","r":"216","n":"강의실","a":65.12,"u":"일반강의실","c":45},{"b":"6호관","r":"301","n":"NCS 디자인실습(2)","a":87.01,"u":"실험실습실","c":40},{"b":"6호관","r":"302","n":"디자인실(1)","a":87.01,"u":"실험실습실","c":40},{"b":"6호관","r":"303","n":"AR·VR콘텐츠디자인과 실습실","a":87.01,"u":"전산실습실","c":40},{"b":"6호관","r":"304","n":"강의실","a":87.34,"u":"일반강의실","c":70},{"b":"6호관","r":"305","n":"강의실","a":87.19,"u":"일반강의실","c":68},{"b":"6호관","r":"306","n":"강의실","a":87.19,"u":"일반강의실","c":64},{"b":"6호관","r":"307","n":"강의실","a":64.34,"u":"일반강의실","c":45},{"b":"6호관","r":"308","n":"강의실","a":64.34,"u":"일반강의실","c":45},{"b":"6호관","r":"309","n":"강의실","a":64.34,"u":"일반강의실","c":45},{"b":"6호관","r":"310","n":"강의실","a":65.38,"u":"일반강의실","c":45},{"b":"6호관","r":"311","n":"강의실","a":86.17,"u":"일반강의실","c":50},{"b":"6호관","r":"314","n":"디자인실(2)","a":87.05,"u":"실험실습실","c":40},{"b":"6호관","r":"315","n":"NCS 디자인실습(2)","a":87.05,"u":"실험실습실","c":40},{"b":"6호관","r":"401","n":"디지털디자인실(1)","a":85.77,"u":"전산실습실","c":36},{"b":"6호관","r":"402","n":"MAC 전산실","a":87.01,"u":"전산실습실","c":36},{"b":"6호관","r":"403","n":"IBM 전산실습실2","a":87.01,"u":"전산실습실","c":0},{"b":"6호관","r":"404","n":"컴퓨터실습실(1)","a":86.98,"u":"전산실습실","c":42},{"b":"6호관","r":"405","n":"강의실","a":87.19,"u":"일반강의실","c":68},{"b":"6호관","r":"406","n":"강의실","a":87.65,"u":"일반강의실","c":64},{"b":"6호관","r":"407","n":"촬영스튜디오","a":86.85,"u":"실험실습실","c":64},{"b":"6호관","r":"408","n":"강의실","a":86.85,"u":"일반강의실","c":64},{"b":"6호관","r":"409","n":"컴퓨터응용실습실(3)","a":86.85,"u":"전산실습실","c":42},{"b":"6호관","r":"410","n":"컴퓨터응용실습실(4)","a":86.85,"u":"전산실습실","c":42},{"b":"6호관","r":"413","n":"IBM 전산실습실","a":87.05,"u":"전산실습실","c":35},{"b":"6호관","r":"414","n":"디지털디자인실(2)","a":87.05,"u":"전산실습실","c":36},{"b":"6호관","r":"B101","n":"강의실","a":82.08,"u":"일반강의실","c":63},{"b":"6호관","r":"B103","n":"강의실","a":83.83,"u":"일반강의실","c":62},{"b":"6호관","r":"B104","n":"강의실","a":83.83,"u":"일반강의실","c":64},{"b":"6호관","r":"B107","n":"강의실","a":65.1,"u":"일반강의실","c":43},{"b":"6호관","r":"B108","n":"강의실","a":63.29,"u":"일반강의실","c":43},{"b":"6호관","r":"B109","n":"강의실","a":63.29,"u":"일반강의실","c":42},{"b":"6호관","r":"B111","n":"강의실","a":83.45,"u":"일반강의실","c":68},{"b":"6호관","r":"B112","n":"강의실","a":83.45,"u":"일반강의실","c":67},{"b":"6호관","r":"B113","n":"강의실","a":62.08,"u":"일반강의실","c":43},{"b":"6호관","r":"B114","n":"강의실","a":62.08,"u":"일반강의실","c":44},{"b":"6호관","r":"B204","n":"소형강의실","a":41.89,"u":"일반강의실","c":0},{"b":"6호관","r":"B205","n":"소형강의실","a":41.89,"u":"일반강의실","c":0},{"b":"6호관","r":"B207","n":"실험실습실","a":82.98,"u":"실험실습실","c":40},{"b":"6호관","r":"B209","n":"소방기계실험실습실","a":108.5,"u":"실험실습실","c":42},{"b":"6호관","r":"B302","n":"다목적실습실","a":105.27,"u":"실험실습실","c":0},{"b":"7호관","r":"101","n":"그래픽실(통합강의실)","a":81.03,"u":"실험실습실","c":40},{"b":"7호관","r":"102","n":"전산실","a":74.15,"u":"전산실습실","c":46},{"b":"7호관","r":"103","n":"전산실","a":79.95,"u":"전산실습실","c":46},{"b":"7호관","r":"201","n":"설계실(1)","a":82.06,"u":"실험실습실","c":46},{"b":"7호관","r":"201-1","n":"모형제작실","a":39.96,"u":"실험실습실","c":0},{"b":"7호관","r":"202","n":"강의실","a":80.94,"u":"일반강의실","c":72},{"b":"7호관","r":"203","n":"설계실(2)","a":82.07,"u":"실험실습실","c":27},{"b":"7호관","r":"401","n":"설계실(3)","a":125.05,"u":"실험실습실","c":52},{"b":"7호관","r":"402","n":"강의실","a":78.7,"u":"일반강의실","c":70},{"b":"7호관","r":"403","n":"설계실(4)","a":124.34,"u":"실험실습실","c":49},{"b":"7호관","r":"501","n":"시공실습실","a":79.27,"u":"실험실습실","c":36},{"b":"7호관","r":"501-1","n":"모형제작실","a":42.69,"u":"실험실습실","c":0},{"b":"7호관","r":"502","n":"NCS 종합실습실(1)","a":80.31,"u":"실험실습실","c":42},{"b":"7호관","r":"503","n":"통합설계실","a":124.48,"u":"전산실습실","c":40},{"b":"7호관","r":"504","n":"재료실습실","a":76.24,"u":"실험실습실","c":0},{"b":"7호관","r":"B101","n":"구조실험실","a":309.15,"u":"실험실습실","c":50},{"b":"8호관","r":"305","n":"전산실습실","a":102.5,"u":"전산실습실","c":40},{"b":"8호관","r":"307","n":"전산실습실","a":91.4,"u":"전산실습실","c":40},{"b":"9호관","r":"110","n":"강의실","a":74.05,"u":"전산실습실","c":null},{"b":"9호관","r":"111","n":"강의실","a":75.7,"u":"일반강의실","c":null},{"b":"9호관","r":"112","n":"강의실","a":75.7,"u":"일반강의실","c":null},{"b":"9호관","r":"113","n":"실습실","a":85.95,"u":"일반강의실","c":null}];
+
+/* ============ 산출 설정 (임시 단가: 실제 단가로 교체하세요) ============ */
+/*CALC_START*/
+const TYPES = ["전산실습실","일반실습실","화학실습실","일반강의실"];
+const TYPE_SUB = {
+  "전산실습실":"PC·네트워크 중심",
+  "일반실습실":"실험·실습 일반",
+  "화학실습실":"배기·급배수 설비 포함",
+  "일반강의실":"강의 중심"
+};
+const SCOPES = [
+  {id:"all",   name:"전반적 환경개선",      sub:"내장·전기·통신·설비·집기 전체"},
+  {id:"part",  name:"부분적 환경개선",      sub:"내장·전기·통신·설비 일부 개선"},
+  {id:"infra", name:"전기, 통신 등 인프라공사", sub:"전기·통신·설비 인프라 중심"}
+];
+/* 단가(원). ARCH·ELEC은 원/㎡, HVAC는 원/㎥(면적×층고), SEAT는 원/인 */
+const RATE = {
+  ARCH:{"전산실습실":250000,"일반실습실":230000,"화학실습실":380000,"일반강의실":200000},
+  ELEC:{"전산실습실":220000,"일반실습실":150000,"화학실습실":180000,"일반강의실":110000},
+  HVAC:{"전산실습실":45000,"일반실습실":40000,"화학실습실":80000,"일반강의실":35000},
+  SEAT:{"전산실습실":450000,"일반실습실":380000,"화학실습실":600000,"일반강의실":180000}
+};
+/* 공사 내용별 포함 항목 */
+const INCLUDE = {
+  all:  ["ARCH","ELEC","HVAC","SEAT"],
+  part: ["ARCH","ELEC","HVAC"],
+  infra:["ELEC","HVAC"]
+};
+const LINE_NAME = {ARCH:"건축·내장 공사",ELEC:"전기·통신 공사",HVAC:"냉난방·환기 설비",SEAT:"가구·집기"};
+/* 내부 보정계수 (화면에 표시하지 않음) */
+const LEVELS = [
+  {id:"max", name:"최대", sub:"전면 교체·고사양 기준"},
+  {id:"mid", name:"중간", sub:"주요 부분 개선 기준"},
+  {id:"min", name:"최소", sub:"기본 보수·표준 사양 기준"}
+];
+const K = {max:1.5, mid:1.3, min:1.0};
+const round1000 = v => Math.round(v/1000)*1000;
+
+/* 직접공사비를 재료비·노무비·경비로 나누는 구성비 (가정값: 실제 내역서 기준으로 교체). 나머지는 경비 */
+const SPLIT = {
+  ARCH:{m:0.50, l:0.40},
+  ELEC:{m:0.50, l:0.42},
+  HVAC:{m:0.58, l:0.32},
+  SEAT:{m:0.88, l:0.10}
+};
+
+/* 원가계산 제비율: 조달청 시설공사 건축공사 간접공사비 적용기준(2026.4.13. 입찰공고분), 종합건설업, 추정가격 5억 원 미만.
+   v는 %, st: ok=공개자료 확인(원문 대조 권장), est=추정·대조 필요, na=미확인 */
+const RATE_KEYS = ["indLabor","accident","employ","health","ltc","pension","retire","env","asbestos","wage","sub","mach","other","ga","profit","vat"];
+const RATES = {
+  indLabor:{name:"간접노무비", v:17.4, base:"직접노무비", st:"est", src:"조달청 분석요율 · 건축공사 간접공사비 적용기준(2026.4.13.)", memo:"공사규모·공기별 표 값으로 교체 필요. 공표된 10억 미만·36개월 초과 19.4%에서 공기별 격차를 반영해 추산한 값입니다."},
+  accident:{name:"산재보험료", v:3.56, base:"노무비(직접+간접)", st:"ok", src:"고용노동부 고시 제2025-91호 (건설업)"},
+  employ:{name:"고용보험료", v:1.01, base:"노무비(직접+간접)", st:"ok", src:"국토교통부 고시 사회보험의 보험료 적용기준"},
+  health:{name:"건강보험료", v:3.595, base:"직접노무비", st:"ok", src:"건강보험료율 7.19%의 사업주 부담분, 공사기간 1개월 이상"},
+  ltc:{name:"노인장기요양보험료", v:13.14, base:"건강보험료", st:"ok", src:"장기요양보험료율 0.9448%, 건강보험료율 7.19% 기준"},
+  pension:{name:"연금보험료", v:4.75, base:"직접노무비", st:"ok", src:"국민연금 9.5%의 사업주 부담분, 공사기간 1개월 이상"},
+  retire:{name:"퇴직공제부금비", v:2.3, base:"직접노무비", st:"ok", src:"추정금액 1억 원 이상 공공공사에 계상 (이 앱은 직접공사비 1억 원 이상일 때 계상)"},
+  env:{name:"환경보전비", v:0, base:"직접공사비", st:"na", src:"국토교통부 환경관리비 산출기준", memo:"건축공사 요율을 확인하지 못해 0으로 두었습니다. 요율을 입력하면 반영됩니다."},
+  asbestos:{name:"석면피해구제분담금", v:0.006, base:"노무비(직접+간접)", st:"ok", src:"2026년도 분담금률(10만분의 6), 조달청 제비율 2026.3.13. 신설"},
+  wage:{name:"임금채권부담금", v:0.09, base:"노무비(직접+간접)", st:"ok", src:"고용노동부 고시 제2025-100호 (2026.1.1. 시행)"},
+  sub:{name:"건설하도급대금 지급보증서 발급수수료", v:0.081, base:"직접공사비", st:"ok", src:"국토교통부 고시 제2016-921호, 추정가격 50억 원 미만"},
+  mach:{name:"건설기계대여대금 지급보증서 발급수수료", v:0.07, base:"직접공사비", st:"est", src:"조달청 제비율표 건축·종합건설업", memo:"제비율표 추출문에서 읽은 값이라 원문 대조가 필요합니다."},
+  other:{name:"기타경비", v:5.2, base:"재료비+노무비", st:"est", src:"조달청 분석요율 · 건축공사 간접공사비 적용기준(2026.4.13.)", memo:"공사규모·공기별 표 값으로 교체 필요. 공표된 10억 미만·36개월 초과 6.1%에서 추산한 값입니다."},
+  ga:{name:"일반관리비", v:8.0, base:"순공사원가", st:"ok", src:"조달청 분석요율, 종합건설업 5억 원 미만"},
+  profit:{name:"이윤", v:15.0, base:"노무비+경비+일반관리비", st:"ok", src:"조달청 분석요율, 5억 원 미만"},
+  vat:{name:"부가가치세", v:10, base:"공사원가", st:"ok", src:"부가가치세법"}
+};
+const DEFAULT_RATES2 = {}; RATE_KEYS.forEach(k => { DEFAULT_RATES2[k] = RATES[k].v; });
+/* 산업안전보건관리비 (건축공사, 대상액 = 재료비 + 직접노무비) */
+const SAFETY = [
+  {max:500000000,  rate:3.11, add:0},
+  {max:5000000000, rate:2.28, add:4325000},
+  {max:Infinity,   rate:2.37, add:0}
+];
+const pct = k => RATES[k].v/100;
+
+function estimate(area, cap, height, type, scope, level){
+  const base = {
+    ARCH: area * RATE.ARCH[type],
+    ELEC: area * RATE.ELEC[type],
+    HVAC: area * height * RATE.HVAC[type],
+    SEAT: cap  * RATE.SEAT[type]
+  };
+  const basis = {
+    ARCH: area.toFixed(1)+"㎡",
+    ELEC: area.toFixed(1)+"㎡",
+    HVAC: area.toFixed(1)+"㎡ × 층고 "+height.toFixed(1)+"m",
+    SEAT: cap+"명"
+  };
+  const lines = INCLUDE[scope].map(k => ({key:k, name:LINE_NAME[k], basis:basis[k], amount:round1000(base[k]*K[level])}));
+  const direct = lines.reduce((s,l)=>s+l.amount,0);
+
+  let mat=0, lab=0, exp=0;
+  lines.forEach(l => {
+    const s = SPLIT[l.key];
+    const m = Math.floor(l.amount*s.m), lb = Math.floor(l.amount*s.l);
+    mat += m; lab += lb; exp += l.amount - m - lb;
+  });
+
+  const fl = Math.floor;
+  const rows = [];
+  const add = (grp,name,basisLabel,baseAmt,rate,amount,kind) => rows.push({grp, name, basisLabel, base:baseAmt, rate, amount, kind:kind||"item"});
+
+  add("재료비","직접재료비","공종별 재료비 합계",null,null,mat);
+  add("","재료비 계","",null,null,mat,"sub");
+
+  const indL = fl(lab*pct("indLabor"));
+  const labor = lab + indL;
+  add("노무비","직접노무비","공종별 노무비 합계",null,null,lab);
+  add("","간접노무비","직접노무비 기준",lab,RATES.indLabor.v,indL);
+  add("","노무비 계","",null,null,labor,"sub");
+
+  let expTotal = 0;
+  const e1 = (name,basisLabel,baseAmt,key,amount) => {
+    const a = (amount===undefined) ? fl(baseAmt*pct(key)) : amount;
+    add(rows.some(x=>x.grp==="경비") ? "" : "경비", name, basisLabel, baseAmt, RATES[key] ? RATES[key].v : null, a);
+    expTotal += a; return a;
+  };
+  add("경비","산출경비(직접경비)","공종별 경비 합계",null,null,exp); expTotal += exp;
+  e1("산재보험료","노무비 기준",labor,"accident");
+  e1("고용보험료","노무비 기준",labor,"employ");
+  const health = e1("건강보험료","직접노무비 기준",lab,"health");
+  e1("노인장기요양보험료","건강보험료 기준",health,"ltc");
+  e1("연금보험료","직접노무비 기준",lab,"pension");
+  const retire = direct >= 100000000 ? fl(lab*pct("retire")) : 0;
+  e1("퇴직공제부금비", direct >= 100000000 ? "직접노무비 기준" : "직접공사비 1억 원 미만 미계상", lab, "retire", retire);
+
+  const sBase = mat + lab;
+  let sAmt = 0, sRate = null, sLabel = "직접공사비 2천만 원 미만 미계상";
+  if(direct >= 20000000){
+    const tier = SAFETY.find(x => sBase < x.max);
+    sRate = tier.rate; sAmt = fl(sBase*tier.rate/100 + tier.add);
+    sLabel = "재료비+직접노무비 기준" + (tier.add ? " + 기초액 "+tier.add.toLocaleString("ko-KR")+"원" : "");
+  }
+  add("", "산업안전보건관리비", sLabel, sBase, sRate, sAmt); expTotal += sAmt;
+
+  e1("환경보전비","직접공사비 기준",direct,"env");
+  e1("석면피해구제분담금","노무비 기준",labor,"asbestos");
+  e1("임금채권부담금","노무비 기준",labor,"wage");
+  e1("건설하도급대금 지급보증서 발급수수료","직접공사비 기준",direct,"sub");
+  e1("건설기계대여대금 지급보증서 발급수수료","직접공사비 기준",direct,"mach");
+  e1("기타경비","재료비+노무비 기준",mat+labor,"other");
+  add("","경비 계","",null,null,expTotal,"sub");
+
+  const net = mat + labor + expTotal;
+  add("","순공사원가","재료비+노무비+경비",null,null,net,"sub");
+  const ga = fl(net*pct("ga"));
+  add("","일반관리비","순공사원가 기준",net,RATES.ga.v,ga);
+  const profit = fl((labor+expTotal+ga)*pct("profit"));
+  add("","이윤","노무비+경비+일반관리비 기준",labor+expTotal+ga,RATES.profit.v,profit);
+  const costTotal = net + ga + profit;
+  add("","공사원가","순공사원가+일반관리비+이윤",null,null,costTotal,"sub");
+  const vat = fl(costTotal*pct("vat"));
+  add("","부가가치세","공사원가 기준",costTotal,RATES.vat.v,vat);
+  const total = costTotal + vat;
+  add("","총공사비","공사원가+부가가치세",null,null,total,"big");
+
+  return {lines, direct, rows, mat, labor, exp:expTotal, net, ga, profit, costTotal, vat, total};
+}
+/*CALC_END*/
+
+/* ============ 화면 ============ */
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("ko-KR");
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const bNum = b => parseInt(b,10);
+const buildings = [...new Set(ROOMS.map(r=>r.b))].sort((a,b)=>bNum(a)-bNum(b));
+const state = {b:buildings[0], room:null, type:null, scope:null, level:null};
+
+function roomsOf(b){
+  return ROOMS.filter(r=>r.b===b).sort((x,y)=>x.r.localeCompare(y.r,"ko",{numeric:true}));
+}
+function suggestType(r){
+  if(!r) return null;
+  if(r.u==="전산실습실") return "전산실습실";
+  if(r.u==="일반강의실") return "일반강의실";
+  if(r.u==="실험실습실") return /화학/.test(r.n) ? "화학실습실" : "일반실습실";
+  return null;
+}
+
+function fillBuildings(){
+  $("bld").innerHTML = buildings.map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join("");
+  $("bld").value = state.b;
+}
+function fillRooms(){
+  const list = roomsOf(state.b);
+  $("room").innerHTML = list.map(r=>`<option value="${esc(r.r)}">${esc(r.r)}호 · ${esc(r.n)}</option>`).join("");
+  state.room = list[0];
+  $("room").value = state.room.r;
+}
+function buildRadios(){
+  $("typeOpts").insertAdjacentHTML("beforeend", TYPES.map(t=>`
+    <label class="opt"><input type="radio" name="type" value="${t}"><span class="optbox"><strong>${t}</strong><small>${TYPE_SUB[t]}</small></span></label>`).join(""));
+  $("scopeOpts").insertAdjacentHTML("beforeend", SCOPES.map(s=>`
+    <label class="opt"><input type="radio" name="scope" value="${s.id}"><span class="optbox"><strong>${s.name}</strong><small>${s.sub}</small></span></label>`).join(""));
+  $("levelOpts").insertAdjacentHTML("beforeend", LEVELS.map(l=>`
+    <label class="opt"><input type="radio" name="level" value="${l.id}"><span class="optbox"><strong>${l.name}</strong><small>${l.sub}</small></span></label>`).join(""));
+}
+function setRadio(name, val){
+  document.querySelectorAll(`input[name="${name}"]`).forEach(i=>{ i.checked = (i.value===val); });
+}
+
+function readInputs(){
+  const cap = $("cap").value.trim(), hgt = $("hgt").value.trim();
+  const capN = cap==="" ? null : Number(cap), hgtN = hgt==="" ? null : Number(hgt);
+  let capErr = "", hgtErr = "";
+  if(capN!==null && (!Number.isInteger(capN) || capN<1 || capN>500)) capErr = "1~500 사이의 정수로 입력하세요.";
+  if(hgtN!==null && (!(hgtN>=2) || hgtN>12)) hgtErr = "2.0~12.0m 사이로 입력하세요.";
+  $("capErr").textContent = capErr; $("hgtErr").textContent = hgtErr;
+  return {cap: capErr?null:capN, hgt: hgtErr?null:hgtN};
+}
+
+let lastText = ""; let current = null;
+function render(){
+  const r = state.room;
+  $("areaM2").textContent = r ? r.a.toFixed(2) : "–";
+  $("areaPy").textContent = r ? "(약 "+(r.a*0.3025).toFixed(1)+"평)" : "";
+  $("roomHint").textContent = r ? `DB 등록: ${r.n} · 용도 ${r.u}` : "";
+  $("capHint").textContent = (r && r.c) ? `DB 등록 수용인원 ${r.c}명 (참고)` : "DB에 수용인원이 없습니다. 직접 입력하세요.";
+
+  const {cap, hgt} = readInputs();
+  const missing = [];
+  if(!r) missing.push(["호실을 선택하세요", false]);
+  missing.push(["수용인원 입력", cap!==null]);
+  missing.push(["층고 입력", hgt!==null]);
+  missing.push(["실습실 유형 선택", !!state.type]);
+  missing.push(["주요 공사 내용 선택", !!state.scope]);
+  missing.push(["환경개선 수준 선택", !!state.level]);
+  const ready = r && cap!==null && hgt!==null && state.type && state.scope && state.level;
+  const body = $("resBody");
+
+  if(!ready){
+    $("resSub").textContent = "입력이 끝나면 예산이 계산됩니다.";
+    body.innerHTML = `<div class="empty">필요한 항목
+      <ul>${missing.filter(m=>m[0]!=="호실을 선택하세요"||!m[1]).map(m=>`<li class="${m[1]?"ok":""}">${m[1]?"✓ ":""}${m[0]}</li>`).join("")}</ul></div><div class="btnrow"><button type="button" id="sampleBtn">샘플 값 채우기</button></div>`;
+    lastText = ""; current = null;
+    $("costSub").textContent = "호실과 조건을 모두 입력하면 표시됩니다.";
+    $("costBody").innerHTML = `<div class="empty">입력이 끝나면 원가계산서가 이 자리에 표시됩니다.</div>`;
+    $("sampleBtn").addEventListener("click", ()=>loadToForm({b:"1호관",r:"307",cap:56,hgt:3.0,type:"전산실습실",scope:"all",level:"max"}, false));
+    return;
+  }
+  const scope = SCOPES.find(s=>s.id===state.scope);
+  const e = estimate(r.a, cap, hgt, state.type, state.scope, state.level);
+  current = {b:r.b, r:r.r, n:r.n, a:r.a, cap:cap, hgt:hgt, type:state.type, scope:state.scope, level:state.level};
+  $("resSub").textContent = `${r.b} ${r.r}호 ${r.n}`;
+  body.innerHTML = `
+    <div class="meta">
+      <span class="chip">${r.a.toFixed(2)}㎡</span>
+      <span class="chip">${cap}명</span>
+      <span class="chip">층고 ${hgt.toFixed(1)}m</span>
+      <span class="chip">${esc(state.type)}</span>
+      <span class="chip">${esc(scope.name)}</span>
+      <span class="chip">환경개선 ${esc(levelName(state.level))}</span>
+    </div>
+    <table>
+      <thead><tr><th scope="col">공종별 직접공사비</th><th scope="col" class="amt">금액(원)</th></tr></thead>
+      <tbody>
+        ${e.lines.map(l=>`<tr><td>${l.name}<span class="basis">${esc(l.basis)}</span></td><td class="amt">${fmt(l.amount)}</td></tr>`).join("")}
+        <tr class="sum"><td>직접공사비 계</td><td class="amt">${fmt(e.direct)}</td></tr>
+      </tbody>
+    </table>
+    <div class="perm" aria-label="면적당 공사비">
+      <div><span class="k">총공사비 ㎡당</span><b>${fmt(Math.round(e.total/r.a))}원</b></div>
+      <div><span class="k">총공사비 평당</span><b>${fmt(Math.round(e.total/(r.a*0.3025)))}원</b></div>
+      <div><span class="k">직접공사비 ㎡당</span><b>${fmt(Math.round(e.direct/r.a))}원</b></div>
+    </div>
+    <div class="total"><span class="lab">총 예산(원가계산서 총공사비, 부가세 포함)</span>
+      <span><span class="val">${fmt(e.total)}원</span><span class="man">약 ${fmt(Math.round(e.total/10000))}만원</span></span></div>
+    <div class="btnrow"><button type="button" id="addBtn">예산 목록에 추가</button><button type="button" id="copyBtn">결과 복사</button><span class="copied" id="copied"></span></div>
+    <div class="note">단가와 구성비는 임시 기준이며 개략 산출 금액입니다. 원가계산서는 아래에서 확인하세요.</div>`;
+  renderCost(e, r);
+  lastText = [
+    `[실습실 환경개선 예산] ${r.b} ${r.r}호 ${r.n}`,
+    `면적 ${r.a.toFixed(2)}㎡ / 수용인원 ${cap}명 / 층고 ${hgt.toFixed(1)}m`,
+    `유형 ${state.type} / 공사 내용 ${scope.name} / 환경개선 수준 ${levelName(state.level)}`,
+    ...e.lines.map(l=>`- ${l.name}: ${fmt(l.amount)}원`),
+    `직접공사비 ${fmt(e.direct)}원 / 순공사원가 ${fmt(e.net)}원 / 일반관리비 ${fmt(e.ga)}원 / 이윤 ${fmt(e.profit)}원 / 부가세 ${fmt(e.vat)}원`,
+    `총공사비 ${fmt(e.total)}원 (㎡당 ${fmt(Math.round(e.total/r.a))}원, 평당 ${fmt(Math.round(e.total/(r.a*0.3025)))}원)`
+  ].join("\n");
+  $("copyBtn").addEventListener("click", async ()=>{
+    try{ await navigator.clipboard.writeText(lastText); $("copied").textContent = "복사했습니다."; }
+    catch(err){ $("copied").textContent = "복사하지 못했습니다. 직접 선택해 복사하세요."; }
+  });
+  $("addBtn").addEventListener("click", addToList);
+}
+
+function renderCost(e, r){
+  $("costSub").textContent = `${r.b} ${r.r}호 ${r.n} 환경개선공사 · 조달청 시설공사 원가계산 제비율(건축공사, 2026.4.13. 입찰공고분) · 종합건설업 · 추정가격 5억 원 미만 · 전기·통신 공종은 건축 기준 준용`;
+  const rateTxt = v => v===null||v===undefined ? "" : String(Number(v.toFixed(3)))+"%";
+  $("costBody").innerHTML = `<table class="cs">
+    <thead><tr><th scope="col">비목</th><th scope="col">구성비목</th><th scope="col" class="amt">기준액(원)</th><th scope="col" class="amt">요율</th><th scope="col" class="amt">금액(원)</th></tr></thead>
+    <tbody>${e.rows.map(x=>`<tr class="${x.kind==="item"?"":x.kind}">
+      <td class="g">${esc(x.grp)}</td>
+      <td>${esc(x.name)}${x.basisLabel?`<span class="basis">${esc(x.basisLabel)}</span>`:""}</td>
+      <td class="amt">${x.base===null?"":fmt(x.base)}</td>
+      <td class="amt">${rateTxt(x.rate)}</td>
+      <td class="amt">${fmt(x.amount)}</td></tr>`).join("")}</tbody></table>
+    <p class="fn">요율은 아래 '원가계산 제비율' 설정값입니다. 추정·미확인 항목은 확인 후 교체하세요. 이 계산서는 개략 산출용 참고 자료이며 공식 예정가격 산정서가 아닙니다.</p>`;
+}
+
+function renderRates2(){
+  const stLab = {ok:"공개자료 확인", est:"추정·대조 필요", na:"미확인"};
+  $("rate2Body").innerHTML = `<table class="r2">
+    <thead><tr><th scope="col">항목</th><th scope="col" class="amt">요율(%)</th><th scope="col">기준액</th><th scope="col">근거·메모</th><th scope="col">상태</th></tr></thead>
+    <tbody>${RATE_KEYS.map(k=>{ const x = RATES[k]; return `<tr>
+      <td>${esc(x.name)}</td>
+      <td class="amt"><input id="r2_${k}" type="number" step="0.001" min="0" max="100" data-k="${k}" value="${x.v}" aria-label="${esc(x.name)} 요율"></td>
+      <td>${esc(x.base)}</td>
+      <td>${esc(x.src)}${x.memo?`<span class="basis">${esc(x.memo)}</span>`:""}</td>
+      <td><span class="st st-${x.st}">${stLab[x.st]}</span></td></tr>`; }).join("")}
+      <tr><td>산업안전보건관리비</td><td class="amt">구간별</td><td>재료비+직접노무비</td>
+        <td>고용노동부 고시 제2025-11호 (건축공사). 5억 원 미만 3.11%, 5억~50억 원 2.28%+기초액 4,325,000원, 50억 원 이상 2.37%<span class="basis">공개 자료에서 읽은 값이라 고시 원문 대조가 필요합니다.</span></td>
+        <td><span class="st st-est">추정·대조 필요</span></td></tr>
+    </tbody></table>`;
+}
+
+function onRoomChange(){
+  state.room = roomsOf(state.b).find(r=>r.r===$("room").value) || null;
+  const s = suggestType(state.room);
+  state.type = s; setRadio("type", s);
+  $("typeHint").textContent = s ? `DB 용도(${state.room.u})를 기준으로 '${s}'를 선택했습니다. 필요하면 변경하세요.` : "";
+  render();
+}
+
+fillBuildings(); fillRooms(); buildRadios();
+$("bld").addEventListener("change", ()=>{ state.b = $("bld").value; fillRooms(); onRoomChange(); });
+$("room").addEventListener("change", onRoomChange);
+$("cap").addEventListener("input", render);
+$("hgt").addEventListener("input", render);
+document.querySelectorAll('input[name="type"]').forEach(i=>i.addEventListener("change", ()=>{ state.type = i.value; $("typeHint").textContent=""; render(); }));
+document.querySelectorAll('input[name="scope"]').forEach(i=>i.addEventListener("change", ()=>{ state.scope = i.value; render(); }));
+document.querySelectorAll('input[name="level"]').forEach(i=>i.addEventListener("change", ()=>{ state.level = i.value; render(); }));
+/* ===== 예산 목록 · 단가 설정 ===== */
+const LS_RATE = "budget.rates.v1", LS_LIST = "budget.list.v1";
+const DEFAULT_RATE = JSON.parse(JSON.stringify(RATE));
+const LS_RATE2 = "budget.rates2.v1";
+let list = [];
+const scopeName = id => (SCOPES.find(s=>s.id===id)||{name:""}).name;
+const levelName = id => (LEVELS.find(l=>l.id===id)||{name:""}).name;
+function lsGet(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+
+function loadSaved(){
+  const rt = lsGet(LS_RATE);
+  if(rt && typeof rt==="object"){
+    for(const g of Object.keys(RATE)) for(const t of TYPES){
+      const v = rt[g] ? Number(rt[g][t]) : 0;
+      if(v>0) RATE[g][t] = v;
+    }
+  }
+  const r2 = lsGet(LS_RATE2);
+  if(r2 && typeof r2==="object"){
+    RATE_KEYS.forEach(k => { const v = Number(r2[k]); if(r2[k]!==undefined && r2[k]!==null && v>=0 && v<=100) RATES[k].v = v; });
+  }
+  const ls = lsGet(LS_LIST);
+  if(Array.isArray(ls)){
+    list = ls.filter(x => x && ROOMS.some(r=>r.b===x.b && r.r===x.r) && TYPES.includes(x.type) && INCLUDE[x.scope] && Number(x.cap)>0 && Number(x.hgt)>0)
+             .map(x => {
+               const r = ROOMS.find(q=>q.b===x.b && q.r===x.r);
+               /* 수준이 없는 이전 저장분은 이전 방식(공사 내용 연동)에 맞춰 변환 */
+               const lv = K[x.level]!==undefined ? x.level : ({all:"max",part:"mid",infra:"min"})[x.scope];
+               return {b:x.b, r:x.r, n:r.n, a:r.a, cap:Number(x.cap), hgt:Number(x.hgt), type:x.type, scope:x.scope, level:lv};
+             });
+  }
+}
+
+function addToList(){
+  if(!current) return;
+  const i = list.findIndex(x=>x.b===current.b && x.r===current.r);
+  if(i>=0) list[i] = current; else list.push(current);
+  lsSet(LS_LIST, list);
+  renderList();
+  $("copied").textContent = i>=0 ? "목록의 기존 항목을 갱신했습니다." : "목록에 추가했습니다.";
+}
+
+function loadToForm(x, scroll){
+  const room = roomsOf(x.b).find(r=>r.r===x.r);
+  if(!room) return;
+  state.b = x.b; $("bld").value = x.b; fillRooms();
+  $("room").value = x.r; state.room = room;
+  $("cap").value = x.cap; $("hgt").value = x.hgt;
+  state.type = x.type; setRadio("type", x.type);
+  state.scope = x.scope; setRadio("scope", x.scope);
+  state.level = x.level; setRadio("level", x.level);
+  $("typeHint").textContent = "";
+  render();
+  if(scroll !== false){ try{ window.scrollTo({top:0, behavior:"smooth"}); }catch(e){} }
+}
+
+function listText(rows, total){
+  return [
+    "[실습실 환경개선 예산 목록]",
+    ...rows.map(({x,e}) => `${x.b} ${x.r}호 ${x.n} | ${x.a.toFixed(1)}㎡ ${x.cap}명 층고 ${x.hgt.toFixed(1)}m | ${x.type} / ${scopeName(x.scope)} / 환경개선 ${levelName(x.level)} | ${fmt(e.total)}원`),
+    `합계 ${fmt(total)}원 (부가세 포함, ${rows.length}건)`
+  ].join("\n");
+}
+
+function renderList(){
+  const box = $("listBody");
+  if(!list.length){
+    box.innerHTML = `<div class="empty">아직 담은 호실이 없습니다. 산출 결과에서 '예산 목록에 추가'를 누르세요.</div>`;
+    return;
+  }
+  const rows = list.map((x,idx)=>({x, idx, e:estimate(x.a, x.cap, x.hgt, x.type, x.scope, x.level)}));
+  const total = rows.reduce((s,r)=>s+r.e.total, 0);
+  const area = rows.reduce((s,r)=>s+r.x.a, 0);
+  const bs = {};
+  rows.forEach(r=>{ bs[r.x.b] = (bs[r.x.b]||0) + r.e.total; });
+  const bKeys = Object.keys(bs).sort((a,b)=>bNum(a)-bNum(b));
+  box.innerHTML = `
+    <div class="tablewrap"><table>
+      <thead><tr><th scope="col">호실</th><th scope="col" class="amt">면적·인원</th><th scope="col">유형·공사 내용</th><th scope="col" class="amt">총 예산(원)</th><th scope="col"><span style="position:absolute;left:-9999px">작업</span></th></tr></thead>
+      <tbody>${rows.map(({x,e,idx})=>`
+        <tr>
+          <td>${esc(x.b)} ${esc(x.r)}호<span class="basis">${esc(x.n)}</span></td>
+          <td class="amt">${x.a.toFixed(1)}㎡<span class="basis">${x.cap}명 · 층고 ${x.hgt.toFixed(1)}m</span></td>
+          <td>${esc(x.type)}<span class="basis">${esc(scopeName(x.scope))} · 환경개선 ${esc(levelName(x.level))}</span></td>
+          <td class="amt">${fmt(e.total)}<span class="basis">${fmt(Math.round(e.total/x.a))}원/㎡</span></td>
+          <td class="amt"><button type="button" class="sm" data-act="load" data-i="${idx}">불러오기</button> <button type="button" class="sm danger" data-act="del" data-i="${idx}">삭제</button></td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div>
+    <div class="meta" style="margin-top:12px">${bKeys.map(b=>`<span class="chip">${esc(b)} ${fmt(bs[b])}원</span>`).join("")}</div>
+    <div class="grand"><span class="lab">${rows.length}개 호실 · 총 ${area.toFixed(1)}㎡ · 부가세 포함 합계</span>
+      <span class="val">${fmt(total)}원 <small style="font-size:13px;font-weight:500">(약 ${fmt(Math.round(total/10000))}만원)</small></span></div>
+    <div class="btnrow"><button type="button" data-act="copy">목록 복사</button><button type="button" data-act="clear" class="danger">전체 비우기</button><span class="copied" id="listMsg"></span></div>`;
+}
+
+let clearArmed = false, clearTimer = null;
+$("listBody").addEventListener("click", async ev=>{
+  const btn = ev.target.closest("button[data-act]");
+  if(!btn) return;
+  const act = btn.dataset.act, i = Number(btn.dataset.i);
+  if(act==="load" && list[i]) loadToForm(list[i]);
+  else if(act==="del"){ list.splice(i,1); lsSet(LS_LIST, list); renderList(); }
+  else if(act==="copy"){
+    const rows = list.map(x=>({x, e:estimate(x.a, x.cap, x.hgt, x.type, x.scope, x.level)}));
+    const total = rows.reduce((s,r)=>s+r.e.total, 0);
+    try{ await navigator.clipboard.writeText(listText(rows, total)); $("listMsg").textContent = "복사했습니다."; }
+    catch(err){ $("listMsg").textContent = "복사하지 못했습니다."; }
+  }
+  else if(act==="clear"){
+    if(!clearArmed){
+      clearArmed = true; btn.textContent = "한 번 더 누르면 비웁니다";
+      clearTimer = setTimeout(()=>{ clearArmed = false; renderList(); }, 3000);
+    } else {
+      clearTimeout(clearTimer); clearArmed = false; list = []; lsSet(LS_LIST, list); renderList();
+    }
+  }
+});
+
+const RATE_GROUPS = [["ARCH","건축·내장 (원/㎡)"],["ELEC","전기·통신 (원/㎡)"],["HVAC","냉난방·환기 (원/㎥)"],["SEAT","가구·집기 (원/인)"]];
+function renderRates(){
+  $("rateBody").innerHTML = `<table>
+    <thead><tr><th scope="col">공종</th>${TYPES.map(t=>`<th scope="col" class="amt">${t}</th>`).join("")}</tr></thead>
+    <tbody>${RATE_GROUPS.map(([g,l])=>`<tr><td>${l}</td>${TYPES.map((t,ti)=>`<td class="amt"><input id="rt_${g}_${ti}" type="number" min="0" step="1000" data-g="${g}" data-t="${t}" value="${RATE[g][t]}" aria-label="${l} ${t}"></td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+$("rateBody").addEventListener("input", ev=>{
+  const el = ev.target;
+  if(!el.dataset || !el.dataset.g) return;
+  const v = Number(el.value);
+  if(!(v>=0) || el.value==="") return;
+  RATE[el.dataset.g][el.dataset.t] = v;
+  lsSet(LS_RATE, RATE);
+  render(); renderList();
+});
+$("rateReset").addEventListener("click", ()=>{
+  for(const g of Object.keys(RATE)) for(const t of TYPES) RATE[g][t] = DEFAULT_RATE[g][t];
+  lsSet(LS_RATE, RATE); renderRates(); render(); renderList();
+});
+
+$("rate2Body").addEventListener("input", ev=>{
+  const el = ev.target;
+  if(!el.dataset || !el.dataset.k) return;
+  const v = Number(el.value);
+  if(el.value==="" || !(v>=0) || v>100) return;
+  RATES[el.dataset.k].v = v;
+  const o = {}; RATE_KEYS.forEach(k => { o[k] = RATES[k].v; });
+  lsSet(LS_RATE2, o);
+  render(); renderList();
+});
+$("rate2Reset").addEventListener("click", ()=>{
+  RATE_KEYS.forEach(k => { RATES[k].v = DEFAULT_RATES2[k]; });
+  lsSet(LS_RATE2, DEFAULT_RATES2);
+  renderRates2(); render(); renderList();
+});
+
+loadSaved();
+renderRates();
+renderRates2();
+onRoomChange();
+renderList();
+</script>
+</body>
+</html>
