@@ -129,6 +129,18 @@ table.r2 td .basis{white-space:normal}
 .st-ok{background:var(--accent-soft);color:var(--accent)}
 .st-est{background:var(--warn-bg);color:var(--warn-ink)}
 .st-na{background:var(--err);color:var(--surface)}
+#worksBox .work{padding:10px 0;border-top:1px solid var(--line)}
+#worksBox .work:first-child{border-top:0;padding-top:0}
+.wlabel{font-weight:600;font-size:14px;margin-bottom:6px;display:flex;align-items:baseline;gap:8px}
+.wnote{font-size:12px;color:var(--muted);font-weight:400}
+.wopts{display:flex;flex-wrap:wrap;gap:8px}
+.wopt{position:relative;display:block}
+.wopt input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+.wbox{display:block;border:1px solid var(--line);border-radius:6px;padding:7px 12px;font-size:14px;background:var(--surface);transition:border-color .12s, background .12s}
+.wbox.none{color:var(--muted)}
+.wopt:hover .wbox{border-color:var(--accent)}
+.wopt input:checked + .wbox{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.wopt input:focus-visible + .wbox{outline:2px solid var(--accent);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}
 </style>
 </head>
@@ -185,9 +197,8 @@ table.r2 td .basis{white-space:normal}
 
       <section class="card" aria-labelledby="h4s">
         <h2 id="h4s"><span class="num">4</span>주요 공사 내용</h2>
-        <fieldset class="opts three" id="scopeOpts" style="margin:0;padding:0;border:0">
-          <legend style="position:absolute;left:-9999px">주요 공사 내용</legend>
-        </fieldset>
+        <p class="hint" style="margin:-4px 0 10px">천장·벽체·칠판·바닥은 하나만, 전기·통신·설비는 여러 개 선택할 수 있습니다. 수량은 면적, 층고, 수용인원으로 자동 계산합니다.</p>
+        <div id="worksBox"></div>
       </section>
 
       <section class="card" aria-labelledby="h5s">
@@ -223,6 +234,8 @@ table.r2 td .basis{white-space:normal}
     <summary>단가 설정 (임시 단가)</summary>
     <p class="sub">여기서 바꾼 단가는 산출 결과와 예산 목록에 바로 반영되며 이 브라우저에 저장됩니다.</p>
     <div class="tablewrap" id="rateBody"></div>
+    <p class="sub" style="margin-top:14px">유형별 보정계수 (공종 단가에 곱합니다)</p>
+    <div class="tablewrap" id="typeFBody"></div>
     <div class="btnrow"><button type="button" id="rateReset">기본값으로 되돌리기</button></div>
   </details>
 
@@ -248,25 +261,68 @@ const TYPE_SUB = {
   "화학실습실":"배기·급배수 설비 포함",
   "일반강의실":"강의 중심"
 };
-const SCOPES = [
-  {id:"all",   name:"전반적 환경개선",      sub:"내장·전기·통신·설비·집기 전체"},
-  {id:"part",  name:"부분적 환경개선",      sub:"내장·전기·통신·설비 일부 개선"},
-  {id:"infra", name:"전기, 통신 등 인프라공사", sub:"전기·통신·설비 인프라 중심"}
+/* 공종과 선택항목. q: 수량 산식 (area 바닥면적㎡, wall 벽면적㎡, board 칠판면적㎡, cap 수용인원, vol 체적㎥, set 1식) */
+const WORKS = [
+  {id:"ceil",  name:"천장", multi:false, items:[
+    {id:"ceilExpPaint", name:"노출도장",      unit:"원/㎡", q:"area"},
+    {id:"ceilGypPaint", name:"석고보드+도장", unit:"원/㎡", q:"area"},
+    {id:"ceilTex",      name:"텍스",          unit:"원/㎡", q:"area"}]},
+  {id:"wall",  name:"벽체", multi:false, items:[
+    {id:"wallPaint",    name:"도장",          unit:"원/㎡", q:"wall"},
+    {id:"wallArt",      name:"아트월",        unit:"원/㎡", q:"wall"},
+    {id:"wallAbsorb",   name:"흡음보드",      unit:"원/㎡", q:"wall"},
+    {id:"wallGypPaint", name:"석고보드+도장", unit:"원/㎡", q:"wall"}]},
+  {id:"board", name:"칠판", multi:false, items:[
+    {id:"boardBpg",     name:"BPG",           unit:"원/㎡", q:"board"},
+    {id:"boardBpgArt",  name:"BPG+아트월",    unit:"원/㎡", q:"board"}]},
+  {id:"floor", name:"바닥", multi:false, items:[
+    {id:"floorDeco",    name:"데코타일",      unit:"원/㎡", q:"area"},
+    {id:"floorAccess",  name:"악세스플로어",  unit:"원/㎡", q:"area"},
+    {id:"floorEpoxy",   name:"에폭시",        unit:"원/㎡", q:"area"}]},
+  {id:"elec",  name:"전기", multi:true, items:[
+    {id:"elecBox",      name:"시스템박스",    unit:"원/인", q:"cap"},
+    {id:"elecHeater",   name:"전열기구",      unit:"원/㎡", q:"area"}]},
+  {id:"comm",  name:"통신", multi:true, items:[
+    {id:"commBox",      name:"시스템박스",    unit:"원/인", q:"cap"},
+    {id:"commOutlet",   name:"아울렛",        unit:"원/인", q:"cap"},
+    {id:"commNet",      name:"네트워크장비",  unit:"원/식", q:"set"}]},
+  {id:"equip", name:"설비", multi:true, items:[
+    {id:"equipVent",    name:"환기",          unit:"원/㎥", q:"vol"},
+    {id:"equipDrain",   name:"급배수",        unit:"원/㎡", q:"area"},
+    {id:"equipHvac",    name:"냉난방",        unit:"원/㎥", q:"vol"}]}
 ];
-/* 단가(원). ARCH·ELEC은 원/㎡, HVAC는 원/㎥(면적×층고), SEAT는 원/인 */
-const RATE = {
-  ARCH:{"전산실습실":175000,"일반실습실":161000,"화학실습실":266000,"일반강의실":140000},
-  ELEC:{"전산실습실":154000,"일반실습실":105000,"화학실습실":126000,"일반강의실":77000},
-  HVAC:{"전산실습실":31500,"일반실습실":28000,"화학실습실":56000,"일반강의실":24500},
-  SEAT:{"전산실습실":315000,"일반실습실":266000,"화학실습실":420000,"일반강의실":126000}
+const ITEMS = {};
+WORKS.forEach(w => w.items.forEach(it => { ITEMS[it.id] = Object.assign({work:w.id, workName:w.name}, it); }));
+/* 항목별 임시 단가(원). 환경개선 수준 보정 전 기준 */
+const PRICE = {
+  ceilExpPaint:12500, ceilGypPaint:31500, ceilTex:26500,
+  wallPaint:10000, wallArt:84000, wallAbsorb:60000, wallGypPaint:33500,
+  boardBpg:126000, boardBpgArt:182000,
+  floorDeco:22500, floorAccess:94500, floorEpoxy:29500,
+  elecBox:105000, elecHeater:38500,
+  commBox:63000, commOutlet:42000, commNet:4200000,
+  equipVent:15500, equipDrain:28000, equipHvac:26500
 };
-/* 공사 내용별 포함 항목 */
-const INCLUDE = {
-  all:  ["ARCH","ELEC","HVAC","SEAT"],
-  part: ["ARCH","ELEC","HVAC"],
-  infra:["ELEC","HVAC"]
+const DEFAULT_PRICE = Object.assign({}, PRICE);
+/* 실습실 유형별 공종 보정계수 (임시값) */
+const TYPE_F = {
+  "전산실습실":{ceil:1.0, wall:1.0, board:1.0, floor:1.1, elec:1.4, comm:1.5, equip:1.0},
+  "일반실습실":{ceil:1.0, wall:1.0, board:1.0, floor:1.0, elec:1.1, comm:1.0, equip:1.1},
+  "화학실습실":{ceil:1.1, wall:1.2, board:1.0, floor:1.4, elec:1.2, comm:1.0, equip:1.8},
+  "일반강의실":{ceil:1.0, wall:1.0, board:1.0, floor:0.9, elec:0.8, comm:0.8, equip:0.9}
 };
-const LINE_NAME = {ARCH:"건축·내장 공사",ELEC:"전기·통신 공사",HVAC:"냉난방·환기 설비",SEAT:"가구·집기"};
+const DEFAULT_TYPE_F = JSON.parse(JSON.stringify(TYPE_F));
+const emptySel = () => { const s = {}; WORKS.forEach(w => { s[w.id] = []; }); return s; };
+const selCount = sel => WORKS.reduce((n,w) => n + ((sel && sel[w.id]) || []).length, 0);
+/* 수량 산식: 벽·칠판은 정방형 호실을 가정 */
+function quantity(q, area, cap, height){
+  if(q==="area") return {v:area, txt:area.toFixed(1)+"㎡"};
+  if(q==="wall"){ const per = 4*Math.sqrt(area), v = per*height; return {v, txt:"벽면적 "+v.toFixed(1)+"㎡ (둘레 "+per.toFixed(1)+"m × 층고 "+height.toFixed(1)+"m)"}; }
+  if(q==="board"){ const w = Math.sqrt(area), v = w*1.2; return {v, txt:"칠판 "+v.toFixed(1)+"㎡ (폭 "+w.toFixed(1)+"m × 높이 1.2m)"}; }
+  if(q==="cap") return {v:cap, txt:cap+"명"};
+  if(q==="vol"){ const v = area*height; return {v, txt:area.toFixed(1)+"㎡ × 층고 "+height.toFixed(1)+"m"}; }
+  return {v:1, txt:"1식"};
+}
 /* 내부 보정계수 (화면에 표시하지 않음) */
 const LEVELS = [
   {id:"max", name:"최대", sub:"전면 교체·고사양 기준"},
@@ -278,10 +334,13 @@ const round1000 = v => Math.round(v/1000)*1000;
 
 /* 직접공사비를 재료비·노무비·경비로 나누는 구성비 (가정값: 실제 내역서 기준으로 교체). 나머지는 경비 */
 const SPLIT = {
-  ARCH:{m:0.50, l:0.40},
-  ELEC:{m:0.50, l:0.42},
-  HVAC:{m:0.58, l:0.32},
-  SEAT:{m:0.88, l:0.10}
+  ceil:{m:0.55, l:0.38},
+  wall:{m:0.55, l:0.38},
+  board:{m:0.72, l:0.22},
+  floor:{m:0.60, l:0.33},
+  elec:{m:0.55, l:0.37},
+  comm:{m:0.70, l:0.25},
+  equip:{m:0.62, l:0.30}
 };
 
 /* 원가계산 제비율: 조달청 시설공사 건축공사 간접공사비 적용기준(2026.4.13. 입찰공고분), 종합건설업, 추정가격 5억 원 미만.
@@ -314,25 +373,21 @@ const SAFETY = [
 ];
 const pct = k => RATES[k].v/100;
 
-function estimate(area, cap, height, type, scope, level){
-  const base = {
-    ARCH: area * RATE.ARCH[type],
-    ELEC: area * RATE.ELEC[type],
-    HVAC: area * height * RATE.HVAC[type],
-    SEAT: cap  * RATE.SEAT[type]
-  };
-  const basis = {
-    ARCH: area.toFixed(1)+"㎡",
-    ELEC: area.toFixed(1)+"㎡",
-    HVAC: area.toFixed(1)+"㎡ × 층고 "+height.toFixed(1)+"m",
-    SEAT: cap+"명"
-  };
-  const lines = INCLUDE[scope].map(k => ({key:k, name:LINE_NAME[k], basis:basis[k], amount:round1000(base[k]*K[level])}));
+function estimate(area, cap, height, type, sel, level){
+  const lines = [];
+  WORKS.forEach(w => {
+    ((sel && sel[w.id]) || []).forEach(id => {
+      const it = ITEMS[id]; if(!it) return;
+      const q = quantity(it.q, area, cap, height);
+      const f = (TYPE_F[type] && TYPE_F[type][w.id]) || 1;
+      lines.push({key:id, work:w.id, name:w.name+" · "+it.name, basis:q.txt, amount:round1000(q.v*PRICE[id]*f*K[level])});
+    });
+  });
   const direct = lines.reduce((s,l)=>s+l.amount,0);
 
   let mat=0, lab=0, exp=0;
   lines.forEach(l => {
-    const s = SPLIT[l.key];
+    const s = SPLIT[l.work];
     const m = Math.floor(l.amount*s.m), lb = Math.floor(l.amount*s.l);
     mat += m; lab += lb; exp += l.amount - m - lb;
   });
@@ -405,7 +460,7 @@ const fmt = n => n.toLocaleString("ko-KR");
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const bNum = b => parseInt(b,10);
 const buildings = [...new Set(ROOMS.map(r=>r.b))].sort((a,b)=>bNum(a)-bNum(b));
-const state = {b:buildings[0], room:null, type:null, scope:null, level:null};
+const state = {b:buildings[0], room:null, type:null, sel:emptySel(), level:null};
 
 function roomsOf(b){
   return ROOMS.filter(r=>r.b===b).sort((x,y)=>x.r.localeCompare(y.r,"ko",{numeric:true}));
@@ -431,10 +486,27 @@ function fillRooms(){
 function buildRadios(){
   $("typeOpts").insertAdjacentHTML("beforeend", TYPES.map(t=>`
     <label class="opt"><input type="radio" name="type" value="${t}"><span class="optbox"><strong>${t}</strong><small>${TYPE_SUB[t]}</small></span></label>`).join(""));
-  $("scopeOpts").insertAdjacentHTML("beforeend", SCOPES.map(s=>`
-    <label class="opt"><input type="radio" name="scope" value="${s.id}"><span class="optbox"><strong>${s.name}</strong><small>${s.sub}</small></span></label>`).join(""));
+  buildWorks();
   $("levelOpts").insertAdjacentHTML("beforeend", LEVELS.map(l=>`
     <label class="opt"><input type="radio" name="level" value="${l.id}"><span class="optbox"><strong>${l.name}</strong><small>${l.sub}</small></span></label>`).join(""));
+}
+function buildWorks(){
+  $("worksBox").innerHTML = WORKS.map(w=>`
+    <div class="work" role="${w.multi?"group":"radiogroup"}" aria-labelledby="wl_${w.id}">
+      <div class="wlabel" id="wl_${w.id}">${w.name}<span class="wnote">${w.multi?"복수 선택":"하나 선택"}</span></div>
+      <div class="wopts">${w.multi?"":`<label class="wopt"><input type="radio" name="${w.id}" value="" checked><span class="wbox none">없음</span></label>`}${w.items.map(it=>`<label class="wopt"><input type="${w.multi?"checkbox":"radio"}" name="${w.id}" value="${it.id}"><span class="wbox">${it.name}</span></label>`).join("")}</div>
+    </div>`).join("");
+}
+function setSelection(sel){
+  document.querySelectorAll("#worksBox input").forEach(i=>{
+    const arr = (sel && sel[i.name]) || [];
+    i.checked = i.value==="" ? arr.length===0 : arr.includes(i.value);
+  });
+}
+function readSelection(){
+  const sel = emptySel();
+  document.querySelectorAll("#worksBox input:checked").forEach(i=>{ if(i.value && sel[i.name]) sel[i.name].push(i.value); });
+  return sel;
 }
 function setRadio(name, val){
   document.querySelectorAll(`input[name="${name}"]`).forEach(i=>{ i.checked = (i.value===val); });
@@ -464,9 +536,9 @@ function render(){
   missing.push(["수용인원 입력", cap!==null]);
   missing.push(["층고 입력", hgt!==null]);
   missing.push(["실습실 유형 선택", !!state.type]);
-  missing.push(["주요 공사 내용 선택", !!state.scope]);
+  missing.push(["주요 공사 내용 선택 (1개 이상)", selCount(state.sel)>0]);
   missing.push(["환경개선 수준 선택", !!state.level]);
-  const ready = r && cap!==null && hgt!==null && state.type && state.scope && state.level;
+  const ready = r && cap!==null && hgt!==null && state.type && selCount(state.sel)>0 && state.level;
   const body = $("resBody");
 
   if(!ready){
@@ -476,12 +548,11 @@ function render(){
     lastText = ""; current = null;
     $("costSub").textContent = "호실과 조건을 모두 입력하면 표시됩니다.";
     $("costBody").innerHTML = `<div class="empty">입력이 끝나면 원가계산서가 이 자리에 표시됩니다.</div>`;
-    $("sampleBtn").addEventListener("click", ()=>loadToForm({b:"1호관",r:"307",cap:56,hgt:3.0,type:"전산실습실",scope:"all",level:"max"}, false));
+    $("sampleBtn").addEventListener("click", ()=>loadToForm({b:"1호관",r:"307",cap:56,hgt:3.0,type:"전산실습실",sel:SAMPLE_SEL,level:"max"}, false));
     return;
   }
-  const scope = SCOPES.find(s=>s.id===state.scope);
-  const e = estimate(r.a, cap, hgt, state.type, state.scope, state.level);
-  current = {b:r.b, r:r.r, n:r.n, a:r.a, cap:cap, hgt:hgt, type:state.type, scope:state.scope, level:state.level};
+  const e = estimate(r.a, cap, hgt, state.type, state.sel, state.level);
+  current = {b:r.b, r:r.r, n:r.n, a:r.a, cap:cap, hgt:hgt, type:state.type, sel:JSON.parse(JSON.stringify(state.sel)), level:state.level};
   $("resSub").textContent = `${r.b} ${r.r}호 ${r.n}`;
   body.innerHTML = `
     <div class="meta">
@@ -489,7 +560,7 @@ function render(){
       <span class="chip">${cap}명</span>
       <span class="chip">층고 ${hgt.toFixed(1)}m</span>
       <span class="chip">${esc(state.type)}</span>
-      <span class="chip">${esc(scope.name)}</span>
+      <span class="chip">${esc(selSummary(state.sel))}</span>
       <span class="chip">환경개선 ${esc(levelName(state.level))}</span>
     </div>
     <table>
@@ -512,7 +583,7 @@ function render(){
   lastText = [
     `[실습실 환경개선 예산] ${r.b} ${r.r}호 ${r.n}`,
     `면적 ${r.a.toFixed(2)}㎡ / 수용인원 ${cap}명 / 층고 ${hgt.toFixed(1)}m`,
-    `유형 ${state.type} / 공사 내용 ${scope.name} / 환경개선 수준 ${levelName(state.level)}`,
+    `유형 ${state.type} / 공사 내용 ${selSummary(state.sel)} / 환경개선 수준 ${levelName(state.level)}`,
     ...e.lines.map(l=>`- ${l.name}: ${fmt(l.amount)}원`),
     `직접공사비 ${fmt(e.direct)}원 / 순공사원가 ${fmt(e.net)}원 / 일반관리비 ${fmt(e.ga)}원 / 이윤 ${fmt(e.profit)}원 / 부가세 ${fmt(e.vat)}원`,
     `총공사비 ${fmt(e.total)}원 (㎡당 ${fmt(Math.round(e.total/r.a))}원, 평당 ${fmt(Math.round(e.total/(r.a*0.3025)))}원)`
@@ -568,25 +639,26 @@ $("room").addEventListener("change", onRoomChange);
 $("cap").addEventListener("input", render);
 $("hgt").addEventListener("input", render);
 document.querySelectorAll('input[name="type"]').forEach(i=>i.addEventListener("change", ()=>{ state.type = i.value; $("typeHint").textContent=""; render(); }));
-document.querySelectorAll('input[name="scope"]').forEach(i=>i.addEventListener("change", ()=>{ state.scope = i.value; render(); }));
+$("worksBox").addEventListener("change", ()=>{ state.sel = readSelection(); render(); });
 document.querySelectorAll('input[name="level"]').forEach(i=>i.addEventListener("change", ()=>{ state.level = i.value; render(); }));
 /* ===== 예산 목록 · 단가 설정 ===== */
-const LS_RATE = "budget.rates.v1", LS_LIST = "budget.list.v1";
-const DEFAULT_RATE = JSON.parse(JSON.stringify(RATE));
+const LS_PRICE = "budget.prices.v2", LS_TYPEF = "budget.typef.v2", LS_LIST = "budget.list.v2";
+const SAMPLE_SEL = {ceil:["ceilGypPaint"], wall:["wallGypPaint"], board:["boardBpg"], floor:["floorDeco"], elec:["elecBox","elecHeater"], comm:["commBox","commOutlet","commNet"], equip:["equipVent","equipDrain","equipHvac"]};
 const LS_RATE2 = "budget.rates2.v1";
 let list = [];
-const scopeName = id => (SCOPES.find(s=>s.id===id)||{name:""}).name;
+const selSummary = sel => WORKS.filter(w => ((sel && sel[w.id]) || []).length).map(w => w.name).join("·");
 const levelName = id => (LEVELS.find(l=>l.id===id)||{name:""}).name;
 function lsGet(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } }
 function lsSet(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 
 function loadSaved(){
-  const rt = lsGet(LS_RATE);
-  if(rt && typeof rt==="object"){
-    for(const g of Object.keys(RATE)) for(const t of TYPES){
-      const v = rt[g] ? Number(rt[g][t]) : 0;
-      if(v>0) RATE[g][t] = v;
-    }
+  const pr = lsGet(LS_PRICE);
+  if(pr && typeof pr==="object"){
+    Object.keys(PRICE).forEach(id => { const v = Number(pr[id]); if(pr[id]!==undefined && pr[id]!==null && v>=0) PRICE[id] = v; });
+  }
+  const tf = lsGet(LS_TYPEF);
+  if(tf && typeof tf==="object"){
+    TYPES.forEach(ty => WORKS.forEach(w => { const v = tf[ty] ? Number(tf[ty][w.id]) : NaN; if(v>=0) TYPE_F[ty][w.id] = v; }));
   }
   const r2 = lsGet(LS_RATE2);
   if(r2 && typeof r2==="object"){
@@ -594,13 +666,14 @@ function loadSaved(){
   }
   const ls = lsGet(LS_LIST);
   if(Array.isArray(ls)){
-    list = ls.filter(x => x && ROOMS.some(r=>r.b===x.b && r.r===x.r) && TYPES.includes(x.type) && INCLUDE[x.scope] && Number(x.cap)>0 && Number(x.hgt)>0)
+    list = ls.filter(x => x && ROOMS.some(r=>r.b===x.b && r.r===x.r) && TYPES.includes(x.type) && K[x.level]!==undefined && x.sel && typeof x.sel==="object" && Number(x.cap)>0 && Number(x.hgt)>0)
              .map(x => {
                const r = ROOMS.find(q=>q.b===x.b && q.r===x.r);
-               /* 수준이 없는 이전 저장분은 이전 방식(공사 내용 연동)에 맞춰 변환 */
-               const lv = K[x.level]!==undefined ? x.level : ({all:"max",part:"mid",infra:"min"})[x.scope];
-               return {b:x.b, r:x.r, n:r.n, a:r.a, cap:Number(x.cap), hgt:Number(x.hgt), type:x.type, scope:x.scope, level:lv};
-             });
+               const sel = emptySel();
+               WORKS.forEach(w => { (Array.isArray(x.sel[w.id]) ? x.sel[w.id] : []).forEach(id => { if(ITEMS[id] && ITEMS[id].work===w.id) sel[w.id].push(id); }); });
+               return {b:x.b, r:x.r, n:r.n, a:r.a, cap:Number(x.cap), hgt:Number(x.hgt), type:x.type, sel:sel, level:x.level};
+             })
+             .filter(x => selCount(x.sel)>0);
   }
 }
 
@@ -620,7 +693,7 @@ function loadToForm(x, scroll){
   $("room").value = x.r; state.room = room;
   $("cap").value = x.cap; $("hgt").value = x.hgt;
   state.type = x.type; setRadio("type", x.type);
-  state.scope = x.scope; setRadio("scope", x.scope);
+  state.sel = JSON.parse(JSON.stringify(x.sel)); setSelection(state.sel);
   state.level = x.level; setRadio("level", x.level);
   $("typeHint").textContent = "";
   render();
@@ -630,7 +703,7 @@ function loadToForm(x, scroll){
 function listText(rows, total){
   return [
     "[실습실 환경개선 예산 목록]",
-    ...rows.map(({x,e}) => `${x.b} ${x.r}호 ${x.n} | ${x.a.toFixed(1)}㎡ ${x.cap}명 층고 ${x.hgt.toFixed(1)}m | ${x.type} / ${scopeName(x.scope)} / 환경개선 ${levelName(x.level)} | ${fmt(e.total)}원`),
+    ...rows.map(({x,e}) => `${x.b} ${x.r}호 ${x.n} | ${x.a.toFixed(1)}㎡ ${x.cap}명 층고 ${x.hgt.toFixed(1)}m | ${x.type} / ${selSummary(x.sel)} / 환경개선 ${levelName(x.level)} | ${fmt(e.total)}원`),
     `합계 ${fmt(total)}원 (부가세 포함, ${rows.length}건)`
   ].join("\n");
 }
@@ -641,7 +714,7 @@ function renderList(){
     box.innerHTML = `<div class="empty">아직 담은 호실이 없습니다. 산출 결과에서 '예산 목록에 추가'를 누르세요.</div>`;
     return;
   }
-  const rows = list.map((x,idx)=>({x, idx, e:estimate(x.a, x.cap, x.hgt, x.type, x.scope, x.level)}));
+  const rows = list.map((x,idx)=>({x, idx, e:estimate(x.a, x.cap, x.hgt, x.type, x.sel, x.level)}));
   const total = rows.reduce((s,r)=>s+r.e.total, 0);
   const area = rows.reduce((s,r)=>s+r.x.a, 0);
   const bs = {};
@@ -654,7 +727,7 @@ function renderList(){
         <tr>
           <td>${esc(x.b)} ${esc(x.r)}호<span class="basis">${esc(x.n)}</span></td>
           <td class="amt">${x.a.toFixed(1)}㎡<span class="basis">${x.cap}명 · 층고 ${x.hgt.toFixed(1)}m</span></td>
-          <td>${esc(x.type)}<span class="basis">${esc(scopeName(x.scope))} · 환경개선 ${esc(levelName(x.level))}</span></td>
+          <td>${esc(x.type)}<span class="basis">${esc(selSummary(x.sel))} · 환경개선 ${esc(levelName(x.level))}</span></td>
           <td class="amt">${fmt(e.total)}<span class="basis">${fmt(Math.round(e.total/x.a))}원/㎡</span></td>
           <td class="amt"><button type="button" class="sm" data-act="load" data-i="${idx}">불러오기</button> <button type="button" class="sm danger" data-act="del" data-i="${idx}">삭제</button></td>
         </tr>`).join("")}
@@ -674,7 +747,7 @@ $("listBody").addEventListener("click", async ev=>{
   if(act==="load" && list[i]) loadToForm(list[i]);
   else if(act==="del"){ list.splice(i,1); lsSet(LS_LIST, list); renderList(); }
   else if(act==="copy"){
-    const rows = list.map(x=>({x, e:estimate(x.a, x.cap, x.hgt, x.type, x.scope, x.level)}));
+    const rows = list.map(x=>({x, e:estimate(x.a, x.cap, x.hgt, x.type, x.sel, x.level)}));
     const total = rows.reduce((s,r)=>s+r.e.total, 0);
     try{ await navigator.clipboard.writeText(listText(rows, total)); $("listMsg").textContent = "복사했습니다."; }
     catch(err){ $("listMsg").textContent = "복사하지 못했습니다."; }
@@ -689,24 +762,37 @@ $("listBody").addEventListener("click", async ev=>{
   }
 });
 
-const RATE_GROUPS = [["ARCH","건축·내장 (원/㎡)"],["ELEC","전기·통신 (원/㎡)"],["HVAC","냉난방·환기 (원/㎥)"],["SEAT","가구·집기 (원/인)"]];
 function renderRates(){
   $("rateBody").innerHTML = `<table>
-    <thead><tr><th scope="col">공종</th>${TYPES.map(t=>`<th scope="col" class="amt">${t}</th>`).join("")}</tr></thead>
-    <tbody>${RATE_GROUPS.map(([g,l])=>`<tr><td>${l}</td>${TYPES.map((t,ti)=>`<td class="amt"><input id="rt_${g}_${ti}" type="number" min="0" step="1000" data-g="${g}" data-t="${t}" value="${RATE[g][t]}" aria-label="${l} ${t}"></td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    <thead><tr><th scope="col">공종</th><th scope="col">항목</th><th scope="col">단위</th><th scope="col" class="amt">단가(원)</th></tr></thead>
+    <tbody>${WORKS.map(w=>w.items.map((it,i)=>`<tr><td>${i===0?esc(w.name):""}</td><td>${esc(it.name)}</td><td>${esc(it.unit)}</td><td class="amt"><input id="pr_${it.id}" type="number" min="0" step="500" data-p="${it.id}" value="${PRICE[it.id]}" aria-label="${esc(w.name)} ${esc(it.name)} 단가"></td></tr>`).join("")).join("")}</tbody></table>`;
+  $("typeFBody").innerHTML = `<table>
+    <thead><tr><th scope="col">공종</th>${TYPES.map(ty=>`<th scope="col" class="amt">${ty}</th>`).join("")}</tr></thead>
+    <tbody>${WORKS.map(w=>`<tr><td>${esc(w.name)}</td>${TYPES.map((ty,ti)=>`<td class="amt"><input id="tf_${w.id}_${ti}" type="number" min="0" step="0.05" data-w="${w.id}" data-t="${ty}" value="${TYPE_F[ty][w.id]}" aria-label="${esc(w.name)} ${ty} 보정계수"></td>`).join("")}</tr>`).join("")}</tbody></table>`;
 }
 $("rateBody").addEventListener("input", ev=>{
   const el = ev.target;
-  if(!el.dataset || !el.dataset.g) return;
+  if(!el.dataset || !el.dataset.p) return;
   const v = Number(el.value);
-  if(!(v>=0) || el.value==="") return;
-  RATE[el.dataset.g][el.dataset.t] = v;
-  lsSet(LS_RATE, RATE);
+  if(el.value==="" || !(v>=0)) return;
+  PRICE[el.dataset.p] = v;
+  lsSet(LS_PRICE, PRICE);
+  render(); renderList();
+});
+$("typeFBody").addEventListener("input", ev=>{
+  const el = ev.target;
+  if(!el.dataset || !el.dataset.w) return;
+  const v = Number(el.value);
+  if(el.value==="" || !(v>=0)) return;
+  TYPE_F[el.dataset.t][el.dataset.w] = v;
+  lsSet(LS_TYPEF, TYPE_F);
   render(); renderList();
 });
 $("rateReset").addEventListener("click", ()=>{
-  for(const g of Object.keys(RATE)) for(const t of TYPES) RATE[g][t] = DEFAULT_RATE[g][t];
-  lsSet(LS_RATE, RATE); renderRates(); render(); renderList();
+  Object.keys(PRICE).forEach(id => { PRICE[id] = DEFAULT_PRICE[id]; });
+  TYPES.forEach(ty => WORKS.forEach(w => { TYPE_F[ty][w.id] = DEFAULT_TYPE_F[ty][w.id]; }));
+  lsSet(LS_PRICE, PRICE); lsSet(LS_TYPEF, TYPE_F);
+  renderRates(); render(); renderList();
 });
 
 $("rate2Body").addEventListener("input", ev=>{
